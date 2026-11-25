@@ -13,6 +13,7 @@
   - 꾹 누르고 있을 때(자동 반복)는 진짜 키보드처럼 조용하다
 - **클릭:** 타자기 활자대 '착', 뗄 때 캐리지 '틱', 오른쪽 클릭은 타자기 스페이스바 '덜컥'
 - **스크롤:** 타자기 플래튼 노브 래칫 틱
+- **드래그:** 캐리지가 랙을 타고 넘어가는 낮은 '틱'. 끌고 간 거리만큼 난다(빨리 끌면 조금 더 또렷하게)
 - **한/영 전환:** 묵직한 키 '도각' + 종 두 음(한 = 올라감, 영 = 내려감)
 - **여백 벨:** 65번째 글자에서 '띵'. 메뉴에서 켤 수 있다(기본 꺼짐)
 
@@ -98,6 +99,7 @@ cd Tajagi
 ## 부록 B: 변경 기록
 
 [CHANGELOG.md](CHANGELOG.md) 참고. 요약:
+- **0.1.1:** 드래그 소리
 - **0.1.0:** 테마 색상, 유니버설 빌드, 첫 공개
 - **0.0.3:** 키보드는 묵직한 기계식, 클릭은 타자기로 역할 교체
 - **0.0.2:** 북소리 같던 합성을 기계 몸통 모델로 갈아엎음
@@ -107,7 +109,7 @@ cd Tajagi
 
 ## English
 
-**Tajagi** ("typewriter" in Korean) is a tiny macOS menu bar app that plays a deep, thocky mechanical-keyboard sound when you type and vintage typewriter sounds when you click or scroll. It also plays a small chime when you switch between Korean and English input.
+**Tajagi** ("typewriter" in Korean) is a tiny macOS menu bar app that plays a deep, thocky mechanical-keyboard sound when you type and vintage typewriter sounds when you click, scroll or drag. It also plays a small chime when you switch between Korean and English input.
 All sounds are synthesized in code; there are no audio samples.
 Install from [Releases](../../releases) (unsigned: use *Open Anyway* in Privacy & Security, or `xattr -dr com.apple.quarantine`), or build with `./build.sh`.
 Keyboard sounds need **Input Monitoring** permission. Events are listen-only, and nothing is stored or sent anywhere.

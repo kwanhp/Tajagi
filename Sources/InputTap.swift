@@ -12,6 +12,7 @@ final class InputTap {
         case mouseDown(button: Int, at: CGPoint)
         case mouseUp(button: Int, at: CGPoint)
         case scroll(delta: Double, continuous: Bool, momentum: Bool)
+        case drag(at: CGPoint)
     }
 
     var handler: (Event) -> Void = { _ in }
@@ -22,7 +23,8 @@ final class InputTap {
 
     func start() {
         if mouseTap == nil {
-            let mask = mask([.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp, .scrollWheel])
+            let mask = mask([.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp, .scrollWheel,
+                             .leftMouseDragged, .rightMouseDragged, .otherMouseDragged])
             mouseTap = install(mask)
         }
         if keyTap == nil, CGPreflightListenEventAccess() {
@@ -66,6 +68,7 @@ final class InputTap {
         case .leftMouseUp: handler(.mouseUp(button: 0, at: e.location))
         case .rightMouseUp: handler(.mouseUp(button: 1, at: e.location))
         case .otherMouseUp: handler(.mouseUp(button: 2, at: e.location))
+        case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged: handler(.drag(at: e.location))
         case .scrollWheel:
             let continuous = e.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
             let dy = e.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)

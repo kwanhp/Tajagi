@@ -12,6 +12,7 @@ enum Sound: String, CaseIterable {
     case typeRelease           // 클릭 뗌 = 캐리지 '틱'
     case typeRight             // 오른쪽 클릭 = 타자기 스페이스바 '덜컥'
     case scrollTick            // 스크롤 = 플래튼 노브 래칫
+    case dragTick              // 드래그 = 캐리지가 랙을 타고 미끄러지는 '스르륵'
     case carriage              // 켤 때 신호음(캐리지 리턴)
 
     var label: String {
@@ -29,13 +30,14 @@ enum Sound: String, CaseIterable {
         case .typeRelease: return "클릭 뗌 (캐리지 틱)"
         case .typeRight: return "오른쪽 클릭"
         case .scrollTick: return "스크롤 틱"
+        case .dragTick: return "드래그 (캐리지 랙)"
         case .carriage: return "캐리지 리턴"
         }
     }
 
     var variants: Int {
         switch self {
-        case .key, .keyUp, .typeClick: return 12
+        case .key, .keyUp, .typeClick, .dragTick: return 12
         case .wide, .wideUp, .space, .spaceUp, .typeRelease, .typeRight, .scrollTick: return 6
         case .carriage: return 2
         case .bell, .toHangul, .toEnglish: return 1
@@ -159,6 +161,15 @@ enum SoundBank {
         case .scrollTick:
             escapement(&c, at: 0.0005, amp: 0.5, clicks: 1)
             return c.finish(peak: 0.16)
+        case .dragTick:
+            // 캐리지 랙 한 칸: 이스케이프먼트 이빨이 '틱' 넘어가고 캐리지 몸통이 살짝 울린다. 스크롤 틱보다 낮고 부드럽게.
+            let es = c.body(Machine.escape, spread: 0.04)
+            let cb = c.body(Machine.carriage, spread: 0.02)
+            c.slide(at: 0, dur: 0.022, rise: 0.004, fall: 0.012, lo: 900, hi: 3800, amp: 0.05)
+            c.excite(es, at: 0.003 + c.rng.uni() * 0.002, clicks: [(0, 0.32)], width: 0.00022)
+            c.excite(cb, at: 0.003, clicks: [(0, 0.10)], width: 0.0003)
+            c.thud(at: 0.003, amp: 0.18, cutoff: 260, tau: 0.008)
+            return c.finish(peak: 0.13)
 
         case .carriage:
             c = Canvas(seconds: 0.8, seed: seed)

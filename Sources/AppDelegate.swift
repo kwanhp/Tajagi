@@ -7,7 +7,7 @@ final class Settings {
     init() {
         d.register(defaults: [
             "enabled": true, "volume": 0.6, "keySounds": true, "marginBell": false, "bellColumn": 65,
-            "hangulSound": true, "mouseSounds": true, "scrollSounds": true, "keyFlash": true, "clickRipple": true,
+            "hangulSound": true, "mouseSounds": true, "scrollSounds": true, "dragSounds": true, "keyFlash": true, "clickRipple": true,
             "theme": "amber", "customAccent": 0xFFC56B,
         ])
     }
@@ -58,6 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastRepeat: CFTimeInterval = 0
     private var lastScroll: CFTimeInterval = 0
     private var scrollAccum = 0.0
+    private var lastDrag: CFTimeInterval = 0
+    private var dragFrom: CGPoint?
+    private var dragAccum = 0.0
     private var heldFlags: UInt64 = 0
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -153,11 +156,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case let .mouseDown(button, p):
             column = 0
+            dragFrom = p; dragAccum = 0
             guard settings["enabled"] else { return }
             if settings["mouseSounds"] { audio.play(button == 0 ? .typeClick : .typeRight, gain: 0.8, pan: pan(for: p)) }
             if settings["clickRipple"] { ripples.show(at: p, color: button == 0 ? settings.theme.accent : settings.theme.alt) }
 
+        case let .drag(p):
+            // 끌고 간 거리 30pt마다 캐리지 랙 한 칸. 빨리 끌어도 초당 25번 이하.
+            guard let from = dragFrom else { dragFrom = p; return }
+            dragAccum += hypot(p.x - from.x, p.y - from.y)
+            dragFrom = p
+            guard settings["enabled"], settings["dragSounds"], dragAccum >= 30, now() - lastDrag > 0.04 else { return }
+            let speed = dragAccum / max(0.04, now() - lastDrag)          // pt/s
+            dragAccum = min(dragAccum - 30, 30)
+            lastDrag = now()
+            audio.play(.dragTick, gain: Float(min(1.0, 0.55 + speed / 4000)), pan: pan(for: p))
+
         case let .mouseUp(_, p):
+            dragFrom = nil
             guard settings["enabled"], settings["mouseSounds"] else { return }
             audio.play(.typeRelease, gain: 0.8, pan: pan(for: p))
 
@@ -206,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addToggle("hangulSound", "한/영 전환 소리")
         addToggle("mouseSounds", "클릭 소리 (타자기)")
         addToggle("scrollSounds", "스크롤 틱 (타자기 노브)")
+        addToggle("dragSounds", "드래그 소리 (캐리지 랙)")
         menu.addItem(.separator())
         addToggle("keyFlash", "키 입력 표시 (화면 아래 키캡)")
         addToggle("clickRipple", "클릭 물결")
