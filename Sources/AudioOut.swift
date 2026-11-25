@@ -1,19 +1,25 @@
 import AVFoundation
+import AppKit
+import CoreAudio
 import QuartzCore
 
 /// 미리 렌더링한 버퍼를 여러 보이스(AVAudioPlayerNode)로 겹쳐 재생한다.
 final class AudioOut {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let format = AVAudioFormat(standardFormatWithSampleRate: SR, channels: 1)!
     private var nodes: [AVAudioPlayerNode] = []
     private var busyUntil: [CFTimeInterval] = []
     private var cursor = 0
     private var buffers: [Sound: [AVAudioPCMBuffer]] = [:]
     private var lastVariant: [Sound: Int] = [:]
+    private let voices: Int
+    private var configObserver: NSObjectProtocol?
+    private var rebuildPending = false
 
     var master: Float = 0.6 { didSet { engine.mainMixerNode.outputVolume = master } }
 
     init(voices: Int = 24) {
+        self.voices = voices
         for (s, vs) in SoundBank.renderAll() {
             buffers[s] = vs.map { samples in
                 let b = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
@@ -24,6 +30,38 @@ final class AudioOut {
                 return b
             }
         }
+        build()
+        // 기본 출력 장치가 바뀌면(에어팟 연결·해제 등) 엔진을 통째로 새로 만든다.
+        // AVAudioEngine은 멈췄다 다시 켜도 예전 장치에 붙어 있는 경우가 있어서 stop/start만으로는 부족하다.
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main) { [weak self] _, _ in
+            self?.scheduleRebuild()
+        }
+        // 잠자기에서 깨어나면 블루투스 출력이 끊겨 있는 경우가 있어 새로 만든다
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.scheduleRebuild()
+        }
+    }
+
+    /// 장치 전환 직후엔 알림이 여러 번 오고 장치가 아직 준비 안 됐을 수 있어 잠깐 모았다가 한 번만 새로 만든다
+    private func scheduleRebuild() {
+        if rebuildPending { return }
+        rebuildPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            self.rebuildPending = false
+            self.build()
+        }
+    }
+
+    private func build() {
+        if let o = configObserver { NotificationCenter.default.removeObserver(o) }
+        engine.stop()
+        for n in nodes { n.stop(); engine.detach(n) }
+        engine = AVAudioEngine()
+        nodes = []; busyUntil = []; cursor = 0
         for _ in 0..<voices {
             let n = AVAudioPlayerNode()
             engine.attach(n)
@@ -32,15 +70,13 @@ final class AudioOut {
             busyUntil.append(0)
         }
         engine.mainMixerNode.outputVolume = master
-        // 출력 장치가 바뀌면(이어폰 연결 등) 엔진이 멈추므로 다시 시작
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            self?.start()
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            self?.scheduleRebuild()
         }
         start()
     }
 
     private func start() {
-        engine.stop()
         do { try engine.start() } catch { NSLog("Tajagi audio start failed: \(error)") ; return }
         for n in nodes { n.play() }
         busyUntil = busyUntil.map { _ in 0 }
