@@ -73,6 +73,36 @@ cd Tajagi
 - 타자기: 같은 파일의 `typebar`, `escapement`, `Machine.typebar` 등
 - 색: `Sources/Theme.swift`
 
+## 부록 A: Claude로 만들었다
+
+이 앱의 코드, 소리 설계, README, CHANGELOG는 전부 Anthropic의 Claude가 썼다. 사람은 귀로 듣고 "이건 태고의 달인 같다", "더 묵직하게" 같은 피드백만 줬다.
+
+| 항목 | 내용 |
+|---|---|
+| 모델 | **Claude Opus 5.5** (`claude-opus-5-5`) |
+| 도구 | **Claude Code**: Claude 데스크톱 앱의 Code 탭 |
+| 추론 강도(effort) | high |
+| 권한 모드 | **bypass permissions**: 파일 수정과 터미널 명령을 매번 묻지 않고 바로 실행 |
+| 사람이 직접 한 것 | 소리 듣고 피드백, macOS 입력 모니터링 권한 허용, 공개 결정 |
+| 걸린 시간 | 첫 요청부터 "딱 좋아"(0.0.3)까지 약 27분. 테마와 공개까지 합쳐 반나절 |
+
+작업 흐름:
+1. Claude가 소리를 코드로 합성한다.
+2. `--render`로 WAV를 뽑아 스펙트럼과 음정감 지표로 스스로 점검한다.
+3. 빌드하고 다시 실행한다.
+4. 사람이 실제로 쳐 보고 한 줄 피드백을 준다.
+5. 반복한다.
+
+버전별로 어떤 피드백이 무엇을 바꿨는지는 [CHANGELOG.md](CHANGELOG.md)에 있다.
+
+## 부록 B: 변경 기록
+
+[CHANGELOG.md](CHANGELOG.md) 참고. 요약:
+- **0.1.0:** 테마 색상, 유니버설 빌드, 첫 공개
+- **0.0.3:** 키보드는 묵직한 기계식, 클릭은 타자기로 역할 교체
+- **0.0.2:** 북소리 같던 합성을 기계 몸통 모델로 갈아엎음
+- **0.0.1:** 첫 빌드
+
 ---
 
 ## English
@@ -82,3 +112,5 @@ All sounds are synthesized in code; there are no audio samples.
 Install from [Releases](../../releases) (unsigned: use *Open Anyway* in Privacy & Security, or `xattr -dr com.apple.quarantine`), or build with `./build.sh`.
 Keyboard sounds need **Input Monitoring** permission. Events are listen-only, and nothing is stored or sent anywhere.
 MIT licensed.
+
+**Made with Claude.** All code, sound design and docs were written by Claude Opus 5.5 (`claude-opus-5-5`). It ran in Claude Code in the Claude desktop app, at effort high, in bypass-permissions mode. The human only listened and gave feedback. See [CHANGELOG.md](CHANGELOG.md) for how each round of feedback changed the sound.
