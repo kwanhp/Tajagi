@@ -6,7 +6,7 @@ final class Settings {
     private let d = UserDefaults.standard
     init() {
         d.register(defaults: [
-            "enabled": true, "volume": 0.6, "boostDB": 0.0, "keySounds": true, "marginBell": false, "bellColumn": 65,
+            "enabled": true, "volume": 0.6, "boostLevel": 0, "keySounds": true, "marginBell": false, "bellColumn": 65,
             "hangulSound": true, "mouseSounds": true, "scrollSounds": true, "dragSounds": true, "keyFlash": true, "clickRipple": true,
             "theme": "amber", "customAccent": 0xFFC56B,
         ])
@@ -19,9 +19,9 @@ final class Settings {
         get { d.float(forKey: "volume") }
         set { d.set(newValue, forKey: "volume") }
     }
-    var boostDB: Float {
-        get { d.float(forKey: "boostDB") }
-        set { d.set(newValue, forKey: "boostDB") }
+    var boostLevel: Int {
+        get { d.integer(forKey: "boostLevel") }
+        set { d.set(newValue, forKey: "boostLevel") }
     }
     var bellColumn: Int { d.integer(forKey: "bellColumn") }
     var themeID: String {
@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         audio = AudioOut()
         audio.master = settings.volume
-        audio.boostDB = settings.boostDB
+        audio.boostLevel = settings.boostLevel
         flash = KeyFlash(theme: settings.theme)
         ripples = Ripples()
         source = InputSourceWatcher()
@@ -360,16 +360,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var boostLabel: NSTextField?
 
-    /// 부스트: 노래(시스템 볼륨)는 그대로, 타자 소리만 키운다(끔/약/중/강 = 컴프레서 0/6/12/18 dB)
+    /// 부스트: 노래(시스템 볼륨)는 그대로, 타자 소리만 키운다(끔·약·중·강·최강, AudioOut.boostLevel 참고)
     private func boostItem() -> NSMenuItem {
         let v = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 30))
         let l = NSTextField(labelWithString: "부스트")
         l.frame = NSRect(x: 18, y: 6, width: 44, height: 18)
-        let s = NSSlider(value: Double(settings.boostDB), minValue: 0, maxValue: 18, target: self, action: #selector(boostChanged(_:)))
+        let s = NSSlider(value: Double(settings.boostLevel), minValue: 0, maxValue: 4, target: self, action: #selector(boostChanged(_:)))
         s.frame = NSRect(x: 62, y: 4, width: 126, height: 22)
         s.isContinuous = true
-        s.numberOfTickMarks = 4; s.allowsTickMarkValuesOnly = true      // 0 / +6 / +12 / +18 dB
-        let val = NSTextField(labelWithString: boostText(settings.boostDB))
+        s.numberOfTickMarks = 5; s.allowsTickMarkValuesOnly = true      // 끔·약·중·강·최강
+        let val = NSTextField(labelWithString: boostText(settings.boostLevel))
         val.frame = NSRect(x: 192, y: 6, width: 52, height: 18)
         val.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         val.textColor = .secondaryLabelColor
@@ -381,14 +381,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return it
     }
 
-    private func boostText(_ db: Float) -> String { ["끔", "약", "중", "강"][max(0, min(3, Int((db / 6).rounded())))] }
+    private func boostText(_ lv: Int) -> String { ["끔", "약", "중", "강", "최강"][max(0, min(4, lv))] }
 
     @objc private func boostChanged(_ sender: NSSlider) {
-        let db = Float(sender.doubleValue)
-        guard db != settings.boostDB else { return }
-        settings.boostDB = db
-        audio.boostDB = db
-        boostLabel?.stringValue = boostText(db)
+        let lv = Int(sender.doubleValue.rounded())
+        guard lv != settings.boostLevel else { return }
+        settings.boostLevel = lv
+        audio.boostLevel = lv
+        boostLabel?.stringValue = boostText(lv)
         audio.play(.key)
     }
 

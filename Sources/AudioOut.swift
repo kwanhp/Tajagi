@@ -19,14 +19,24 @@ final class AudioOut {
     private var comp: AVAudioUnitEffect?
 
     var master: Float = 0.6 { didSet { engine.mainMixerNode.outputVolume = master } }
-    /// 부스트 단계(dB, 0…18). 시스템 볼륨(=노래 볼륨)은 그대로 두고 타자 소리만 크게 만드는 용도.
-    /// 소리가 이미 0 dBFS 가까이 나가서 그냥 키우면 찢어지므로, 컴프레서가 '딸깍' 머리는 누르고 꼬리·몸통을 끌어올린 뒤
-    /// 피크 리미터가 0 dBFS를 넘지 않게 막는다. 실측(오프라인 렌더): +18에서 체감 음량 약 +5~8 dB.
-    var boostDB: Float = 0 { didSet { applyBoost() } }
+    /// 부스트 단계 0…4 (끔·약·중·강·최강). 시스템 볼륨(=노래 볼륨)은 그대로 두고 타자 소리만 크게 만드는 용도.
+    /// 소리가 이미 0 dBFS 가까이 나가서 그냥 키우면 찢어지므로
+    ///  - 약·중·강: 컴프레서가 '딸깍' 머리는 누르고 꼬리·몸통을 끌어올린다(6/12/18 dB)
+    ///  - 강·최강: 소리 하나하나를 tanh로 살짝/더 포화시켜 파형을 꽉 채운다(+8 kHz 로우패스로 거친 고역은 깎음)
+    ///  - 마지막 피크 리미터가 0 dBFS를 넘지 않게 막는다
+    /// 실측(오프라인 렌더, 50 ms 창 RMS, 끔 대비): 키 소리 강 +8 dB, 최강 +11 dB / 클릭 +10 dB / 스페이스 +10~12 dB
+    var boostLevel: Int = 0 { didSet { applyBoost() } }
+    private static let compDB: [Float] = [0, 6, 12, 18, 18]
+    private static let satK: [Float] = [0, 0, 0, 2, 4]
+    private var raw: [Sound: [[Float]]] = [:]
+    private var bufferSat: Float = -1
 
     private func applyBoost() {
+        let lv = max(0, min(4, boostLevel))
+        let k = Self.satK[lv]
+        if k != bufferSat { makeBuffers(sat: k) }
         guard let c = comp else { return }
-        let b = max(0, min(18, boostDB))
+        let b = Self.compDB[lv]
         c.bypass = b < 0.5
         let u = c.audioUnit
         func set(_ p: AudioUnitParameterID, _ v: Float) { AudioUnitSetParameter(u, p, kAudioUnitScope_Global, 0, v, 0) }
@@ -37,18 +47,33 @@ final class AudioOut {
         set(kDynamicsProcessorParam_OverallGain, b)
     }
 
-    init(voices: Int = 24) {
-        self.voices = voices
-        for (s, vs) in SoundBank.renderAll() {
-            buffers[s] = vs.map { samples in
-                let b = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
-                b.frameLength = AVAudioFrameCount(samples.count)
-                samples.withUnsafeBufferPointer { src in
-                    b.floatChannelData![0].update(from: src.baseAddress!, count: samples.count)
+    /// 미리 렌더링한 소리로 재생 버퍼를 만든다. sat > 0이면 소리마다 tanh 포화 + 8 kHz 로우패스 후 원래 피크로 맞춘다.
+    private func makeBuffers(sat k: Float) {
+        bufferSat = k
+        var out: [Sound: [AVAudioPCMBuffer]] = [:]
+        for (s, vs) in raw {
+            out[s] = vs.map { orig in
+                var x = orig
+                if k > 0, let pk = x.map(abs).max(), pk > 0 {
+                    let g = k / pk, norm = tanh(k)
+                    for i in x.indices { x[i] = tanh(g * x[i]) / norm * pk }
+                    var lp = Biquad.lowpass(8000)
+                    for i in x.indices { x[i] = Float(lp.run(Double(x[i]))) }
+                    if let p2 = x.map(abs).max(), p2 > 0 { let r = pk / p2; for i in x.indices { x[i] *= r } }
                 }
+                let b = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(x.count))!
+                b.frameLength = AVAudioFrameCount(x.count)
+                x.withUnsafeBufferPointer { b.floatChannelData![0].update(from: $0.baseAddress!, count: x.count) }
                 return b
             }
         }
+        buffers = out
+    }
+
+    init(voices: Int = 24) {
+        self.voices = voices
+        raw = SoundBank.renderAll()
+        makeBuffers(sat: 0)
         build()
         // 기본 출력 장치가 바뀌면(에어팟 연결·해제 등) 엔진을 통째로 새로 만든다.
         // AVAudioEngine은 멈췄다 다시 켜도 예전 장치에 붙어 있는 경우가 있어서 stop/start만으로는 부족하다.
