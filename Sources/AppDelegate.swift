@@ -6,7 +6,7 @@ final class Settings {
     private let d = UserDefaults.standard
     init() {
         d.register(defaults: [
-            "enabled": true, "volume": 0.6, "keySounds": true, "marginBell": false, "bellColumn": 65,
+            "enabled": true, "volume": 0.6, "boostDB": 0.0, "keySounds": true, "marginBell": false, "bellColumn": 65,
             "hangulSound": true, "mouseSounds": true, "scrollSounds": true, "dragSounds": true, "keyFlash": true, "clickRipple": true,
             "theme": "amber", "customAccent": 0xFFC56B,
         ])
@@ -18,6 +18,10 @@ final class Settings {
     var volume: Float {
         get { d.float(forKey: "volume") }
         set { d.set(newValue, forKey: "volume") }
+    }
+    var boostDB: Float {
+        get { d.float(forKey: "boostDB") }
+        set { d.set(newValue, forKey: "boostDB") }
     }
     var bellColumn: Int { d.integer(forKey: "bellColumn") }
     var themeID: String {
@@ -66,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         audio = AudioOut()
         audio.master = settings.volume
+        audio.boostDB = settings.boostDB
         flash = KeyFlash(theme: settings.theme)
         ripples = Ripples()
         source = InputSourceWatcher()
@@ -215,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         enabledItem.target = self
         menu.addItem(enabledItem)
         menu.addItem(volumeItem())
+        menu.addItem(boostItem())
         menu.addItem(.separator())
 
         addToggle("keySounds", "키보드 소리 (묵직한 기계식)")
@@ -350,6 +356,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let it = NSMenuItem()
         it.view = v
         return it
+    }
+
+    private var boostLabel: NSTextField?
+
+    /// 부스트: 노래(시스템 볼륨)는 그대로, 타자 소리만 키운다(끔/약/중/강 = 컴프레서 0/6/12/18 dB)
+    private func boostItem() -> NSMenuItem {
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 30))
+        let l = NSTextField(labelWithString: "부스트")
+        l.frame = NSRect(x: 18, y: 6, width: 44, height: 18)
+        let s = NSSlider(value: Double(settings.boostDB), minValue: 0, maxValue: 18, target: self, action: #selector(boostChanged(_:)))
+        s.frame = NSRect(x: 62, y: 4, width: 126, height: 22)
+        s.isContinuous = true
+        s.numberOfTickMarks = 4; s.allowsTickMarkValuesOnly = true      // 0 / +6 / +12 / +18 dB
+        let val = NSTextField(labelWithString: boostText(settings.boostDB))
+        val.frame = NSRect(x: 192, y: 6, width: 52, height: 18)
+        val.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        val.textColor = .secondaryLabelColor
+        boostLabel = val
+        v.addSubview(l); v.addSubview(s); v.addSubview(val)
+        v.toolTip = "시스템 볼륨(노래)은 그대로 두고 타자 소리만 키운다. 컴프레서+리미터라 찢어지지 않는다."
+        let it = NSMenuItem()
+        it.view = v
+        return it
+    }
+
+    private func boostText(_ db: Float) -> String { ["끔", "약", "중", "강"][max(0, min(3, Int((db / 6).rounded())))] }
+
+    @objc private func boostChanged(_ sender: NSSlider) {
+        let db = Float(sender.doubleValue)
+        guard db != settings.boostDB else { return }
+        settings.boostDB = db
+        audio.boostDB = db
+        boostLabel?.stringValue = boostText(db)
+        audio.play(.key)
     }
 
     func menuWillOpen(_ menu: NSMenu) { refreshMenu() }

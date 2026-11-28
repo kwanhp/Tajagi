@@ -16,7 +16,26 @@ final class AudioOut {
     private var configObserver: NSObjectProtocol?
     private var rebuildPending = false
 
+    private var comp: AVAudioUnitEffect?
+
     var master: Float = 0.6 { didSet { engine.mainMixerNode.outputVolume = master } }
+    /// 부스트 단계(dB, 0…18). 시스템 볼륨(=노래 볼륨)은 그대로 두고 타자 소리만 크게 만드는 용도.
+    /// 소리가 이미 0 dBFS 가까이 나가서 그냥 키우면 찢어지므로, 컴프레서가 '딸깍' 머리는 누르고 꼬리·몸통을 끌어올린 뒤
+    /// 피크 리미터가 0 dBFS를 넘지 않게 막는다. 실측(오프라인 렌더): +18에서 체감 음량 약 +5~8 dB.
+    var boostDB: Float = 0 { didSet { applyBoost() } }
+
+    private func applyBoost() {
+        guard let c = comp else { return }
+        let b = max(0, min(18, boostDB))
+        c.bypass = b < 0.5
+        let u = c.audioUnit
+        func set(_ p: AudioUnitParameterID, _ v: Float) { AudioUnitSetParameter(u, p, kAudioUnitScope_Global, 0, v, 0) }
+        set(kDynamicsProcessorParam_Threshold, -b)
+        set(kDynamicsProcessorParam_HeadRoom, 1.5)
+        set(kDynamicsProcessorParam_AttackTime, 0.0005)
+        set(kDynamicsProcessorParam_ReleaseTime, 0.05)
+        set(kDynamicsProcessorParam_OverallGain, b)
+    }
 
     init(voices: Int = 24) {
         self.voices = voices
@@ -70,6 +89,22 @@ final class AudioOut {
             busyUntil.append(0)
         }
         engine.mainMixerNode.outputVolume = master
+        // mainMixer → 컴프레서(부스트) → 피크 리미터 → 출력
+        func fx(_ t: OSType) -> AVAudioUnitEffect {
+            AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
+                componentType: kAudioUnitType_Effect, componentSubType: t,
+                componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
+        }
+        let c = fx(kAudioUnitSubType_DynamicsProcessor), lim = fx(kAudioUnitSubType_PeakLimiter)
+        engine.attach(c); engine.attach(lim)
+        let hw = engine.outputNode.outputFormat(forBus: 0)
+        let mixFmt = AVAudioFormat(standardFormatWithSampleRate: hw.sampleRate > 0 ? hw.sampleRate : SR, channels: 2)!
+        engine.disconnectNodeOutput(engine.mainMixerNode)
+        engine.connect(engine.mainMixerNode, to: c, format: mixFmt)
+        engine.connect(c, to: lim, format: mixFmt)
+        engine.connect(lim, to: engine.outputNode, format: mixFmt)
+        comp = c
+        applyBoost()
         configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             self?.scheduleRebuild()
         }
