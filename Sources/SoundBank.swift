@@ -35,6 +35,9 @@ enum Sound: String, CaseIterable {
         }
     }
 
+    /// 음이 있는 소리(종). 부스트의 포화 단계에서 뺀다.
+    var isTonal: Bool { self == .toHangul || self == .toEnglish || self == .bell }
+
     var variants: Int {
         switch self {
         case .key, .keyUp, .typeClick, .dragTick: return 12

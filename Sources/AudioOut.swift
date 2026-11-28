@@ -48,13 +48,15 @@ final class AudioOut {
     }
 
     /// 미리 렌더링한 소리로 재생 버퍼를 만든다. sat > 0이면 소리마다 tanh 포화 + 8 kHz 로우패스 후 원래 피크로 맞춘다.
+    /// 종소리 계열(한/영, 여백 벨)은 포화하지 않는다: 음이 있는 소리는 포화하면 배음·혼변조가 생겨 '깨진다'
+    /// (실측 왜곡: 컴프레서만 0.2%, 강 1.3%, 최강 4.1%). 이 소리들은 컴프레서 부스트만 받아도 강·최강에서 +10 dB쯤 커진다.
     private func makeBuffers(sat k: Float) {
         bufferSat = k
         var out: [Sound: [AVAudioPCMBuffer]] = [:]
         for (s, vs) in raw {
             out[s] = vs.map { orig in
                 var x = orig
-                if k > 0, let pk = x.map(abs).max(), pk > 0 {
+                if k > 0, !s.isTonal, let pk = x.map(abs).max(), pk > 0 {
                     let g = k / pk, norm = tanh(k)
                     for i in x.indices { x[i] = tanh(g * x[i]) / norm * pk }
                     var lp = Biquad.lowpass(8000)
